@@ -1,0 +1,24 @@
+{
+  "source": "pyproj 3.8.0; EPSG:4326 to EPSG:32631; always_xy=True; network disabled",
+  "tolerance_metres": 0.01,
+  "points": [
+    {
+      "longitude": 3.345,
+      "latitude": 6.596,
+      "easting": 538137.6618342295,
+      "northing": 729101.6312982851
+    },
+    {
+      "longitude": 3.347,
+      "latitude": 6.598,
+      "easting": 538358.5985369759,
+      "northing": 729322.8780314983
+    },
+    {
+      "longitude": 3.349,
+      "latitude": 6.6,
+      "easting": 538579.5334654152,
+      "northing": 729544.1257607887
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "fixture_kind": "real unmodified OpenStreetMap API response",
+  "retrieved_date": "2026-10-23",
+  "url": "https://api.openstreetmap.org/api/0.6/map?bbox=3.345,6.596,3.349,6.600",
+  "bounds_west_south_east_north": [
+    3.345,
+    6.596,
+    3.349,
+    6.6
+  ],
+  "counts": {
+    "nodes": 723,
+    "building_ways": 67,
+    "highway_ways": 33
+  },
+  "sha256": "a8dafb58fb53e836e3301f0a2b2dcfefb5a1363217b016df27a3708d6cef014a",
+  "attribution": "\u00a9 OpenStreetMap contributors",
+  "licence": "ODbL 1.0",
+  "licence_url": "https://www.openstreetmap.org/copyright",
+  "notes": "Source-record counts do not guarantee every feature is supported by the future importer."
+}

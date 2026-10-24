@@ -1,0 +1,42 @@
+{
+  "fixture_kind": "synthetic MCP replies; actual schemas are in docs/offline/references/blender-mcp-tools.json",
+  "cases": [
+    {
+      "name": "scene",
+      "tool": "get_scene_info",
+      "reply": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Scene fixture: 1 object\nFixtureCube | MESH | size: 2, 2, 2"
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "name": "execution_error",
+      "tool": "execute_blender_code",
+      "reply": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Error executing code: SyntaxError: invalid syntax"
+          }
+        ],
+        "isError": false
+      },
+      "expect": "failure_even_though_protocol_isError_is_false"
+    },
+    {
+      "name": "disconnect",
+      "error": "connection_closed",
+      "expect": "disconnected"
+    },
+    {
+      "name": "timeout",
+      "error": "timeout",
+      "expect": "failed_without_unbounded_retry"
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "fixture_kind": "synthetic model responses; never claim live inference",
+  "cases": [
+    {
+      "name": "valid",
+      "output": {
+        "asset_type": "bungalow",
+        "units": "metres",
+        "width": 10,
+        "depth": 8,
+        "height": 5,
+        "components": [
+          "walls",
+          "roof",
+          "porch",
+          "door",
+          "windows"
+        ],
+        "style": "flat-colour-low-poly",
+        "triangle_limit": 20000,
+        "assumptions": [
+          "dimensions are user-provided test values"
+        ]
+      },
+      "expect": "accept"
+    },
+    {
+      "name": "negative_dimension",
+      "output": {
+        "asset_type": "bungalow",
+        "units": "metres",
+        "width": -1,
+        "depth": 8,
+        "height": 5,
+        "components": [
+          "walls",
+          "roof",
+          "porch",
+          "door",
+          "windows"
+        ],
+        "style": "flat-colour-low-poly",
+        "triangle_limit": 20000,
+        "assumptions": [
+          "dimensions are user-provided test values"
+        ]
+      },
+      "expect": "reject"
+    },
+    {
+      "name": "missing_dimension",
+      "output": {
+        "asset_type": "bungalow",
+        "units": "metres",
+        "width": 10,
+        "height": 5,
+        "components": [
+          "walls",
+          "roof",
+          "porch",
+          "door",
+          "windows"
+        ],
+        "style": "flat-colour-low-poly",
+        "triangle_limit": 20000,
+        "assumptions": [
+          "dimensions are user-provided test values"
+        ]
+      },
+      "expect": "clarify_or_explicit_default"
+    },
+    {
+      "name": "invalid_json",
+      "raw": "{not JSON",
+      "expect": "bounded_repair"
+    },
+    {
+      "name": "timeout",
+      "error": "timeout",
+      "expect": "job_failed"
+    },
+    {
+      "name": "unsupported_style",
+      "output": {
+        "asset_type": "bungalow",
+        "units": "metres",
+        "width": 10,
+        "depth": 8,
+        "height": 5,
+        "components": [
+          "walls",
+          "roof",
+          "porch",
+          "door",
+          "windows"
+        ],
+        "style": "unknown-style",
+        "triangle_limit": 20000,
+        "assumptions": [
+          "dimensions are user-provided test values"
+        ]
+      },
+      "expect": "clarify"
+    }
+  ]
+}

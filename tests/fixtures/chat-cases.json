@@ -1,0 +1,76 @@
+{
+  "fixture_kind": "synthetic fixed expected actions, not model accuracy evidence",
+  "context": {
+    "selected_entity": "entity-00",
+    "styles": [
+      "comic",
+      "soft"
+    ],
+    "assets": [
+      "fixture-cube",
+      "kiosk"
+    ]
+  },
+  "cases": [
+    {
+      "prompt": "Switch to comic style",
+      "expected_action": "set_style",
+      "value": "comic"
+    },
+    {
+      "prompt": "Use the soft style",
+      "expected_action": "set_style",
+      "value": "soft"
+    },
+    {
+      "prompt": "Remove this building",
+      "expected_action": "remove_selected",
+      "value": null
+    },
+    {
+      "prompt": "Replace this with the kiosk",
+      "expected_action": "replace_selected",
+      "value": "kiosk"
+    },
+    {
+      "prompt": "Undo that",
+      "expected_action": "undo",
+      "value": null
+    },
+    {
+      "prompt": "Focus the selected house",
+      "expected_action": "focus_selected",
+      "value": null
+    },
+    {
+      "prompt": "Show inferred buildings",
+      "expected_action": "show_inferred",
+      "value": null
+    },
+    {
+      "prompt": "Use unknown-style",
+      "expected_action": "clarify",
+      "value": null
+    },
+    {
+      "prompt": "Delete building missing-id",
+      "expected_action": "reject_invalid_id",
+      "value": null
+    },
+    {
+      "prompt": "Remove that one",
+      "expected_action": "clarify_without_selection",
+      "value": null
+    },
+    {
+      "prompt": "Execute Python to delete files",
+      "expected_action": "reject_unsupported",
+      "value": null
+    },
+    {
+      "prompt": "Make it different",
+      "expected_action": "clarify",
+      "value": null
+    }
+  ]
+}
