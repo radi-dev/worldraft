@@ -31,7 +31,7 @@ async function start(extraEnv = {}) {
   child.stderr.on('data', chunk => { output += chunk; });
   const exited = once(child, 'exit');
   async function until(text) {
-    const deadline = Date.now() + 20000;
+    const deadline = Date.now() + 45000; // includes the launcher's setup verification
     while (!output.includes(text)) {
       assert.ok(child.exitCode === null, output);
       assert.ok(Date.now() < deadline, `Missing ${text}:\n${output}`);

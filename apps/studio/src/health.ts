@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "./api";
 
 export interface HealthResponse {
   status: "ok";
@@ -20,7 +21,7 @@ type HealthState =
 export async function fetchHealth(
   signal: AbortSignal,
 ): Promise<HealthResponse> {
-  const response = await fetch("/api/health", { signal });
+  const response = await fetch(apiUrl("/api/health"), { signal });
   if (!response.ok)
     throw new Error(`Health request returned HTTP ${response.status}`);
   const data: unknown = await response.json();

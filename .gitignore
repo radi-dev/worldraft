@@ -158,3 +158,9 @@ __pycache__/
 
 # Machine-specific offline package caches and temporary environments
 .offline/
+
+# Release packaging output (npm run package)
+release/
+
+# Runtime state of the development launcher
+.worldraft/
