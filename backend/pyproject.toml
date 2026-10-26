@@ -4,11 +4,15 @@ version = "0.1.0"
 description = "Worldraft local authoring studio — Task 01 scaffold"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "fastapi==0.161.1",
-    "langchain==1.4.7",
+    "fastapi==0.151.0",
+    "langchain==1.4.6",
     "langgraph==1.2.16",
+    "pydantic-settings==2.16.1",
     "uvicorn[standard]==0.54.0",
 ]
+
+[project.scripts]
+worldraft = "studio.serve:main"
 
 [build-system]
 requires = ["hatchling>=1.27"]

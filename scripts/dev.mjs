@@ -1,9 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { ensureEnvironment } from "./setup.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const log = (message) => console.log(`[dev] ${message}`);
@@ -38,6 +39,22 @@ export function readConfig(env = process.env, args = process.argv.slice(2)) {
     apiUrl: `http://127.0.0.1:${apiPort}`,
     uiUrl: `http://127.0.0.1:${uiPort}`,
   };
+}
+
+export const LAUNCHER_VARIABLES = ["API_PORT", "UI_PORT", "NO_OPEN", "DEV_STARTUP_TIMEOUT_MS", "BROWSER"];
+
+export function ignoredDotenvVariables(root) {
+  // The launcher reads its variables from the environment only (see
+  // .env.example). Warn when a .env file tries to set them, so the split is
+  // visible instead of silent. This does not parse values or load anything.
+  const file = path.join(root, ".env");
+  if (!existsSync(file)) return [];
+  const names = new Set();
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=/);
+    if (match && LAUNCHER_VARIABLES.includes(match[1])) names.add(match[1]);
+  }
+  return [...names];
 }
 
 export function assertPortFree(port) {
@@ -111,46 +128,104 @@ export async function openBrowser(url, env = process.env) {
   });
 }
 
-function checkDependencies(env) {
-  if (
-    Number(process.versions.node.split(".")[0]) < 22 ||
-    (process.versions.node.startsWith("22.") &&
-      Number(process.versions.node.split(".")[1]) < 12)
-  )
-    throw new Error(
-      "Node.js 22.12+ is required. Install a supported Node.js version.",
-    );
-  const uv = spawnSync("uv", ["--version"], { env, encoding: "utf8" });
-  if (uv.error || uv.status !== 0)
-    throw new Error(
-      "uv is missing from PATH. Install uv, then run uv sync --project backend --locked.",
-    );
-  if (!existsSync(path.join(root, "node_modules/vite/bin/vite.js")))
-    throw new Error(
-      "Frontend dependencies are missing. Run npm ci in the repository root.",
-    );
-  if (!existsSync(path.join(root, "backend/.venv")))
-    throw new Error(
-      "Backend environment is missing. Run uv sync --project backend --locked.",
-    );
-  const imports = spawnSync(
-    "uv",
-    [
-      "run",
-      "--project",
-      "backend",
-      "--no-sync",
-      "--offline",
-      "python",
-      "-c",
-      "import fastapi, uvicorn, langchain, langgraph; from studio.main import app",
-    ],
-    { cwd: root, env, encoding: "utf8", timeout: 15000 },
+
+// ---------------------------------------------------------------------------
+// Process-tree helpers and the orphan registry.
+//
+// Children run in their own process groups (POSIX) so the whole tree can be
+// signalled. The cost: a terminal hang-up (closed tab, IDE "kill terminal")
+// reaches only this launcher. So the launcher (a) handles SIGHUP and repeated
+// Ctrl+C, (b) kills the groups from an `exit` guard, and (c) records its
+// services in .worldraft/dev-services.json so the next launch can reclaim any
+// verified orphans instead of failing on an occupied port.
+// ---------------------------------------------------------------------------
+
+export const REGISTRY_FILE = ".worldraft/dev-services.json";
+
+export function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+
+export function treeAlive(pid) {
+  // POSIX: probe the process group; Windows: the parent only.
+  return process.platform === "win32" ? isAlive(pid) : isAlive(-pid);
+}
+
+export function killTree(pid, signal = "SIGTERM") {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(-pid, signal); // whole process group
+    }
+  } catch (error) {
+    if (error.code !== "ESRCH") log(`Shutdown warning: ${error.message}`);
+  }
+}
+
+export function commandLineOf(pid) {
+  // Best effort, used only to confirm a recorded PID was not recycled by an
+  // unrelated process before we signal it.
+  if (!Number.isInteger(pid) || pid <= 0) return "";
+  const result =
+    process.platform === "win32"
+      ? spawnSync(
+          "powershell",
+          ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`],
+          { encoding: "utf8", timeout: 10000 },
+        )
+      : spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 5000 });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+export function writeRegistry(root, services) {
+  mkdirSync(path.join(root, path.dirname(REGISTRY_FILE)), { recursive: true });
+  writeFileSync(
+    path.join(root, REGISTRY_FILE),
+    JSON.stringify({ launcherPid: process.pid, writtenAt: new Date().toISOString(), services }, null, 2),
   );
-  if (imports.error || imports.status !== 0)
+}
+
+export function clearRegistry(root) {
+  rmSync(path.join(root, REGISTRY_FILE), { force: true });
+}
+
+export async function reclaimOrphans(root, { log: emit = log, commandLine = commandLineOf } = {}) {
+  const file = path.join(root, REGISTRY_FILE);
+  if (!existsSync(file)) return [];
+  let registry;
+  try {
+    registry = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    rmSync(file, { force: true });
+    return [];
+  }
+  if (registry.launcherPid && registry.launcherPid !== process.pid && isAlive(registry.launcherPid)) {
     throw new Error(
-      `Backend dependencies could not load. Run uv sync --project backend --locked.\n${imports.stderr || imports.error?.message || ""}`,
+      `Another development session appears to be running (launcher pid ${registry.launcherPid}). Stop it with Ctrl+C first, or delete ${REGISTRY_FILE} if that is stale.`,
     );
+  }
+  const reclaimed = [];
+  for (const service of registry.services ?? []) {
+    if (!Number.isInteger(service.pid) || !isAlive(service.pid)) continue;
+    // Identity check: the PID must still run the command we started.
+    if (!commandLine(service.pid).includes(service.marker)) continue;
+    emit(`Stopping orphaned [${service.label}] from a previous session (pid ${service.pid}).`);
+    killTree(service.pid, "SIGTERM");
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && isAlive(service.pid)) await delay(75);
+    if (isAlive(service.pid)) killTree(service.pid, "SIGKILL");
+    reclaimed.push(service.label);
+  }
+  rmSync(file, { force: true });
+  if (reclaimed.length) await delay(300); // let the kernel release the sockets
+  return reclaimed;
 }
 
 function pipeLabel(stream, label) {
@@ -176,6 +251,11 @@ export async function main() {
     return;
   }
   const config = readConfig();
+  const ignored = ignoredDotenvVariables(root);
+  if (ignored.length)
+    log(
+      `Note: .env sets ${ignored.join(", ")}, which this launcher reads from the environment only; ignoring. Use e.g. \`${ignored[0]}=... npm run dev\`.`,
+    );
   const env = {
     ...process.env,
     API_PORT: String(config.apiPort),
@@ -188,75 +268,59 @@ export async function main() {
   const children = [];
   let stopping;
 
-  function signalGroup(child, signal) {
-    if (!child.pid) return;
-    try {
-      process.kill(-child.pid, signal);
-    } catch (error) {
-      if (error.code !== "ESRCH") log(`Shutdown warning: ${error.message}`);
-    }
-  }
+  let forced = false;
 
   function shutdown(code) {
     if (stopping) return stopping;
     abort.abort();
     stopping = (async () => {
-      log("Stopping development services…");
-      if (process.platform === "win32") {
-        await Promise.all(
-          children
-            .filter((child) => child.pid)
-            .map(
-              (child) =>
-                new Promise((resolve) => {
-                  const killer = spawn(
-                    "taskkill",
-                    ["/PID", String(child.pid), "/T", "/F"],
-                    { stdio: "ignore" },
-                  );
-                  killer.once("error", resolve);
-                  killer.once("exit", resolve);
-                }),
-            ),
-        );
-      } else {
-        for (const child of children) signalGroup(child, "SIGTERM");
-        // Wait for groups, not just parents: uvicorn's reload worker is a grandchild.
+      log("Stopping development services… (press Ctrl+C again to force)");
+      for (const child of children) killTree(child.pid, "SIGTERM");
+      if (process.platform !== "win32") {
+        // Wait for whole groups, not just parents: uvicorn's reload worker is a grandchild.
         const deadline = Date.now() + 3000;
-        while (
-          Date.now() < deadline &&
-          children.some((child) => {
-            try {
-              process.kill(-child.pid, 0);
-              return true;
-            } catch {
-              return false;
-            }
-          })
-        )
-          await delay(75);
-        for (const child of children) signalGroup(child, "SIGKILL");
+        while (!forced && Date.now() < deadline && children.some((child) => treeAlive(child.pid))) await delay(75);
+        for (const child of children) killTree(child.pid, "SIGKILL");
       }
+      clearRegistry(root);
       process.exitCode = code;
     })();
     return stopping;
   }
 
-  process.once("SIGINT", () => {
+  function onSignal(signal) {
+    if (stopping) {
+      // Second Ctrl+C: stop waiting politely.
+      forced = true;
+      for (const child of children) killTree(child.pid, "SIGKILL");
+      return;
+    }
+    log(`Received ${signal}.`);
     void shutdown(0);
-  });
-  process.once("SIGTERM", () => {
-    void shutdown(0);
+  }
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+  process.on("SIGHUP", onSignal); // terminal tab closed, IDE "kill terminal"
+  process.on("exit", () => {
+    // Last resort, synchronous: whatever ended this process, take the tree with it.
+    for (const child of children) if (child.pid && treeAlive(child.pid)) killTree(child.pid, "SIGKILL");
+    if (stopping) clearRegistry(root);
   });
 
-  function startService(label, command, args, cwd) {
+  function startService(label, command, args, cwd, marker) {
     const child = spawn(command, args, {
       cwd,
       env,
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
     });
+    child.marker = marker;
+    child.label = label;
     children.push(child);
+    writeRegistry(
+      root,
+      children.map((c) => ({ label: c.label, pid: c.pid, marker: c.marker })),
+    );
     pipeLabel(child.stdout, label);
     pipeLabel(child.stderr, label);
     child.once("error", (error) => {
@@ -272,7 +336,9 @@ export async function main() {
   }
 
   try {
-    checkDependencies(env);
+    // First launch installs from the lockfiles; later launches are offline no-ops.
+    await ensureEnvironment({ env, install: true, log: (m) => log(`setup: ${m}`) });
+    await reclaimOrphans(root);
     await Promise.all([
       assertPortFree(config.apiPort),
       assertPortFree(config.uiPort),
@@ -298,12 +364,14 @@ export async function main() {
         "backend/src",
       ],
       root,
+      "uvicorn studio.main:app",
     );
     startService(
       "ui",
       process.execPath,
       [path.join(root, "node_modules/vite/bin/vite.js")],
       path.join(root, "apps/studio"),
+      path.join(root, "node_modules/vite/bin/vite.js"),
     );
     await Promise.all([
       waitForReady(
